@@ -1,0 +1,121 @@
+---
+  - hosts: all
+    tasks:
+      - name: create a VPC with dedicated tenancy and a couple of tags
+        amazon.aws.ec2_vpc_net:
+           name: ansi_vpc
+           cidr_block: 10.10.0.0/16
+           region: us-east-1
+           tags:
+             tenancy: defualt
+        register: vpc
+
+      - name: cretae a internet gate way 
+        ec2_vpc_igw:
+          state: present
+          vpc_id: "{{vpc.vpc.id}}"
+          region: us-east-1
+          tags:
+        register: igw
+      - name: create a subnet
+        ec2_vpc_subnet:
+          state: present
+          vpc_id: "{{vpc.vpc.id}}"
+          cidr: 10.10.0.0/17
+          region: us-east-1
+          az: us-east-1a
+          tags:
+            Name: subnet-pub
+        register: subnetp
+      - name: create a subnet
+        ec2_vpc_subnet:
+          state: present
+          vpc_id: "{{vpc.vpc.id}}"
+          cidr: 10.10.128.0/17
+          region: us-east-1
+          az: us-east-1b
+          tags:
+            Name: subnet-prvt
+        register: subnetprvt
+
+      - name: Set up Public Subnets Route Table
+        ec2_vpc_route_table:
+          state: present
+          vpc_id: "{{vpc.vpc.id}}"
+          region: us-east-1
+          tags:
+            Name: rt-p
+          subnets:
+             - "{{subnetp.subnet.id}}"
+          routes:
+            - dest: '0.0.0.0/0'
+              gateway_id: "{{igw.gateway_id}}"
+        register: public_rt
+
+
+      - name: Set up Public Subnets Route Table
+        ec2_vpc_route_table:
+          state: present
+          vpc_id: "{{vpc.vpc.id}}"
+          region: us-east-1
+          tags:
+            Name: rt-prvt
+          subnets:
+             - "{{subnetprvt.subnet.id}}"
+        register: public_prvt
+
+      - name: create a security group
+        ec2_group:
+          name: sec
+          description: sg with rule descriptions
+          state: present
+          vpc_id: "{{vpc.vpc.id}}"
+          region: us-east-1
+          rules:
+            - proto: tcp
+              from_port: 80
+              to_port: 80
+              cidr_ip: 0.0.0.0/0
+            - proto: tcp
+              from_port: 22
+              to_port: 22
+              cidr_ip: 10.0.0.0/0
+          rules_egress:
+            - proto: all
+              cidr_ip: 0.0.0.0/0
+          tags:
+            Name: sec
+
+        register: group
+      - name: Create a new EC2 key
+        ec2_key:
+            name: ani-key
+            region: us-east-1
+        register: ec2_key
+ 
+      - name: Save private key
+        copy: content="{{ ec2_key.key.private_key }}" dest="./aws.ani-key.pem" mode=0600
+        when: ec2_key.changed
+      - name:  "Provisioning ec2 instance over AWS Cloud"
+        ec2_instance:
+          image_id: 'ami-0dbc3d7bc646e8516'
+          instance_type: "t2.micro"
+          region: us-east-1
+          key_name: ani-key
+          state: present
+          vpc_subnet_id: "{{subnetp.subnet.id}}"
+          network: 
+            assign_public_ip: yes
+          security_group: sec
+          user_data: "{{lookup('file', 'bash.sh')}}"
+          tags:
+            Name: ec2
+        register: ec2
+      - name: Add newly created EC2 instance to host group
+        add_host:
+           hostname: "{{10.10.65.154}}"
+           user_data: "{{lookup('file', 'bash.sh')}}"
+           groupname: launched
+        with_items: "{{ec2.instances}}"
+
+
