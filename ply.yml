@@ -111,11 +111,3 @@
           tags:
             Name: ec2
         register: ec2
-      - name: Add newly created EC2 instance to host group
-        add_host:
-           hostname: "{{10.10.65.154}}"
-           user_data: "{{lookup('file', 'bash.sh')}}"
-           groupname: launched
-        with_items: "{{ec2.instances}}"
-
-
