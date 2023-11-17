@@ -107,7 +107,7 @@
           network: 
             assign_public_ip: yes
           security_group: sec
-          user_data: "{{lookup('file', '/home/ec2-userbash.sh')}}"
+          user_data: "{{lookup('file', '/home/ec2-user/bash.sh')}}"
           tags:
             Name: ec2
         register: ec2
